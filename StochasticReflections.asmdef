@@ -1,0 +1,10 @@
+{
+    "name": "StochasticReflections",
+    "references": [
+        "Unity.Postprocessing.Runtime"
+    ],
+    "optionalUnityReferences": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false
+}

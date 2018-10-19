@@ -1,0 +1,21 @@
+{
+    "category": "PostProcessing/StochasticReflections", 
+    "description": "Compute Stochastic Screen Space Reflections", 
+    "gitHead": "0d2114387a99011be685886f8ea902242e323e70", 
+    "keywords": [
+        "post-processing", 
+        "image-effects",
+		"reflections"
+    ], 
+    "name": "com.simeonradivoev.stochastic-reflections",
+	"displayName": "Stochastic Screen Space Reflections",
+    "repository": {
+        "type": "git", 
+        "url": "git@github.com:simeonradivoev/ComputeStochasticReflections.git"
+    }, 
+    "unity": "2018.2", 
+    "version": "1.0.0",
+	"dependencies": {
+		"com.unity.postprocessing": "2.0.15-preview"
+    }
+}

@@ -1,0 +1,23 @@
+﻿#pragma kernel CSMain
+
+Texture2D<float> _Source;
+SamplerState sampler_Source;
+RWTexture2D<float> _Result;
+float4 _Size;
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    float2 uv = (id.xy + 0.5f) * _Size.xy;
+    float fineZ = _Source.SampleLevel(sampler_Source, uv, 0);
+    fineZ = max(fineZ, _Source.SampleLevel(sampler_Source, uv + int2(1, 0) * _Size.zw, 0));
+    fineZ = max(fineZ, _Source.SampleLevel(sampler_Source, uv + int2(-1, 0) * _Size.zw, 0));
+    fineZ = max(fineZ, _Source.SampleLevel(sampler_Source, uv + int2(0, 1) * _Size.zw, 0));
+    fineZ = max(fineZ, _Source.SampleLevel(sampler_Source, uv + int2(0, -1) * _Size.zw, 0));
+    fineZ = max(fineZ, _Source.SampleLevel(sampler_Source, uv + int2(1, 1) * _Size.zw, 0));
+    fineZ = max(fineZ, _Source.SampleLevel(sampler_Source, uv + int2(-1, 1) * _Size.zw, 0));
+    fineZ = max(fineZ, _Source.SampleLevel(sampler_Source, uv + int2(1, -1) * _Size.zw, 0));
+    fineZ = max(fineZ, _Source.SampleLevel(sampler_Source, uv + int2(-1, -1) * _Size.zw, 0));
+
+    _Result[id.xy] = fineZ;
+}

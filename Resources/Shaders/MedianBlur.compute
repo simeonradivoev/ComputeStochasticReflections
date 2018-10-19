@@ -1,0 +1,163 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMedianLow
+#pragma kernel CSMedianHigh
+
+const static uint KERNEL_SIZE = 16;
+const static int BLUR_KERNEL_LOW = 1;
+const static uint WINDOW_SIZE_LOW = KERNEL_SIZE + BLUR_KERNEL_LOW * 2;
+const static uint HALF_WINDOW_SIZE_LOW = WINDOW_SIZE_LOW / 2;
+const static int BLUR_KERNEL_HIGH = 2;
+const static uint WINDOW_SIZE_HIGH = KERNEL_SIZE + BLUR_KERNEL_HIGH * 2;
+const static uint HALF_WINDOW_SIZE_HIGH = WINDOW_SIZE_HIGH / 2;
+
+
+#define s2(a, b)				temp = a; a = min(a, b); b = max(temp, b);
+#define t2(a, b)				s2(v[a], v[b]);
+#define t24(a, b, c, d, e, f, g, h)			t2(a, b); t2(c, d); t2(e, f); t2(g, h); 
+#define t25(a, b, c, d, e, f, g, h, i, j)		t24(a, b, c, d, e, f, g, h); t2(i, j);
+
+#define mn3(a, b, c)			s2(a, b); s2(a, c);
+#define mx3(a, b, c)			s2(b, c); s2(a, c);
+
+#define mnmx3(a, b, c)			mx3(a, b, c); s2(a, b);                                   // 3 exchanges
+#define mnmx4(a, b, c, d)		s2(a, b); s2(c, d); s2(a, c); s2(b, d);                   // 4 exchanges
+#define mnmx5(a, b, c, d, e)	s2(a, b); s2(c, d); mn3(a, c, e); mx3(b, d, e);           // 6 exchanges
+#define mnmx6(a, b, c, d, e, f) s2(a, d); s2(b, e); s2(c, f); mn3(a, b, c); mx3(d, e, f); // 7 exchanges
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Result;
+groupshared uint mainCachedRLow[WINDOW_SIZE_LOW * WINDOW_SIZE_LOW];
+groupshared uint mainCachedGLow[WINDOW_SIZE_LOW * WINDOW_SIZE_LOW];
+groupshared uint mainCachedBLow[WINDOW_SIZE_LOW * WINDOW_SIZE_LOW];
+groupshared uint mainCachedALow[WINDOW_SIZE_LOW * WINDOW_SIZE_LOW];
+groupshared uint mainCachedRHigh[WINDOW_SIZE_HIGH * WINDOW_SIZE_HIGH];
+groupshared uint mainCachedGHigh[WINDOW_SIZE_HIGH * WINDOW_SIZE_HIGH];
+groupshared uint mainCachedBHigh[WINDOW_SIZE_HIGH * WINDOW_SIZE_HIGH];
+groupshared uint mainCachedAHigh[WINDOW_SIZE_HIGH * WINDOW_SIZE_HIGH];
+
+half4 LoadPixelLow(uint id)
+{
+    return asfloat(uint4(mainCachedRLow[id], mainCachedGLow[id], mainCachedBLow[id], mainCachedALow[id]));
+}
+
+void StorePixelLow(uint id, half4 value)
+{
+    mainCachedRLow[id] = asuint(value.r);
+    mainCachedGLow[id] = asuint(value.g);
+    mainCachedBLow[id] = asuint(value.b);
+    mainCachedALow[id] = asuint(value.a);
+}
+
+half4 LoadPixelHigh(uint id)
+{
+    return asfloat(uint4(mainCachedRHigh[id], mainCachedGHigh[id], mainCachedBHigh[id], mainCachedAHigh[id]));
+}
+
+void StorePixelHigh(uint id, half4 value)
+{
+    mainCachedRHigh[id] = asuint(value.r);
+    mainCachedGHigh[id] = asuint(value.g);
+    mainCachedBHigh[id] = asuint(value.b);
+    mainCachedAHigh[id] = asuint(value.a);
+}
+
+[numthreads(KERNEL_SIZE, KERNEL_SIZE, 1)]
+void CSMedianLow(uint3 groupId : SV_GroupId, uint groupIndex : SV_GroupIndex, uint3 groupThreadId : SV_GroupThreadID, uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (groupThreadId.x < HALF_WINDOW_SIZE_LOW && groupThreadId.y < HALF_WINDOW_SIZE_LOW)
+    {
+        uint2 offsetId = -BLUR_KERNEL_LOW + groupThreadId.xy * 2;
+        uint2 topmostGlobalId = groupId.xy * KERNEL_SIZE + offsetId;
+        uint topMostIndex = groupThreadId.y * 2 * WINDOW_SIZE_LOW + groupThreadId.x * 2;
+        StorePixelLow(topMostIndex, Result[topmostGlobalId]);
+        StorePixelLow(topMostIndex + 1, Result[topmostGlobalId + uint2(1, 0)]);
+        StorePixelLow(topMostIndex + WINDOW_SIZE_LOW, Result[topmostGlobalId + uint2(0, 1)]);
+        StorePixelLow(topMostIndex + WINDOW_SIZE_LOW + 1, Result[topmostGlobalId + uint2(1, 1)]);
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    uint2 topmostId = BLUR_KERNEL_LOW + groupThreadId.xy;
+    uint topmostIndex = topmostId.y * WINDOW_SIZE_LOW + topmostId.x;
+
+    half4 v[6];
+
+    v[0] = LoadPixelLow(topmostIndex - 1 - WINDOW_SIZE_LOW);
+    v[1] = LoadPixelLow(topmostIndex - WINDOW_SIZE_LOW);
+    v[2] = LoadPixelLow(topmostIndex + 1 - WINDOW_SIZE_LOW);
+    v[3] = LoadPixelLow(topmostIndex - 1);
+    v[4] = LoadPixelLow(topmostIndex);
+    v[5] = LoadPixelLow(topmostIndex + 1);
+
+	// Starting with a subset of size 6, remove the min and max each time
+    half4 temp;
+	mnmx6(v[0], v[1], v[2], v[3], v[4], v[5]);
+    v[5] = LoadPixelLow(topmostIndex - 1 + WINDOW_SIZE_LOW);
+	mnmx5(v[1], v[2], v[3], v[4], v[5]);
+    v[5] = LoadPixelLow(topmostIndex + WINDOW_SIZE_LOW);
+	mnmx4(v[2], v[3], v[4], v[5]);
+    v[5] = LoadPixelLow(topmostIndex + 1 + WINDOW_SIZE_LOW);
+	mnmx3(v[3], v[4], v[5]);
+    Result[dispatchThreadId.xy] = v[4];
+}
+
+[numthreads(KERNEL_SIZE, KERNEL_SIZE, 1)]
+void CSMedianHigh(uint3 groupId : SV_GroupId, uint groupIndex : SV_GroupIndex, uint3 groupThreadId : SV_GroupThreadID, uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (groupThreadId.x < HALF_WINDOW_SIZE_HIGH && groupThreadId.y < HALF_WINDOW_SIZE_HIGH)
+    {
+        uint2 offsetId = -BLUR_KERNEL_HIGH + groupThreadId.xy * 2;
+        uint2 topmostGlobalId = groupId.xy * KERNEL_SIZE + offsetId;
+        uint topMostIndex = groupThreadId.y * 2 * WINDOW_SIZE_HIGH + groupThreadId.x * 2;
+        StorePixelHigh(topMostIndex, Result[topmostGlobalId]);
+        StorePixelHigh(topMostIndex + 1, Result[topmostGlobalId + uint2(1, 0)]);
+        StorePixelHigh(topMostIndex + WINDOW_SIZE_HIGH, Result[topmostGlobalId + uint2(0, 1)]);
+        StorePixelHigh(topMostIndex + WINDOW_SIZE_HIGH + 1, Result[topmostGlobalId + uint2(1, 1)]);
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    uint2 topmostId = BLUR_KERNEL_HIGH + groupThreadId.xy;
+    uint topmostIndex = topmostId.y * WINDOW_SIZE_HIGH + topmostId.x;
+
+    half4 v[25];
+	// Add the pixels which make up our window to the pixel array.
+	[unroll]
+    for (int dX = -2; dX <= 2; ++dX)
+    {
+		[unroll]
+        for (int dY = -2; dY <= 2; ++dY)
+        {
+            int2 offset = int2(dX, dY);
+		    
+			// If a pixel in the window is located at (x+dX, y+dY), put it at index (dX + R)(2R + 1) + (dY + R) of the
+			// pixel array. This will fill the pixel array, with the top left pixel of the window at pixel[0] and the
+			// bottom right pixel of the window at pixel[N-1].
+            v[(dX + 2) * 5 + (dY + 2)] = LoadPixelHigh(topmostIndex + dX + dY * WINDOW_SIZE_HIGH);
+        }
+    }
+
+    half4 c = LoadPixelHigh(topmostIndex);
+    half4 temp;
+	t25(0, 1, 3, 4, 2, 4, 2, 3, 6, 7);
+	t25(5, 7, 5, 6, 9, 7, 1, 7, 1, 4);
+	t25(12, 13, 11, 13, 11, 12, 15, 16, 14, 16);
+	t25(14, 15, 18, 19, 17, 19, 17, 18, 21, 22);
+	t25(20, 22, 20, 21, 23, 24, 2, 5, 3, 6);
+	t25(0, 6, 0, 3, 4, 7, 1, 7, 1, 4);
+	t25(11, 14, 8, 14, 8, 11, 12, 15, 9, 15);
+	t25(9, 12, 13, 16, 10, 16, 10, 13, 20, 23);
+	t25(17, 23, 17, 20, 21, 24, 18, 24, 18, 21);
+	t25(19, 22, 8, 17, 9, 18, 0, 18, 0, 9);
+	t25(10, 19, 1, 19, 1, 10, 11, 20, 2, 20);
+	t25(2, 11, 12, 21, 3, 21, 3, 12, 13, 22);
+	t25(4, 22, 4, 13, 14, 23, 5, 23, 5, 14);
+	t25(15, 24, 6, 24, 6, 15, 7, 16, 7, 19);
+	t25(3, 11, 5, 17, 11, 17, 9, 17, 4, 10);
+	t25(6, 12, 7, 14, 4, 6, 4, 7, 12, 14);
+	t25(10, 14, 6, 7, 10, 12, 6, 10, 6, 17);
+	t25(12, 17, 7, 17, 7, 10, 12, 18, 7, 12);
+	t24(10, 18, 12, 20, 10, 20, 10, 12);
+    Result[dispatchThreadId.xy] = v[12];
+}

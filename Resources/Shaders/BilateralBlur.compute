@@ -1,0 +1,104 @@
+﻿#pragma kernel CSBilateral
+
+const static uint KERNEL_SIZE = 16;
+const static int BLUR_KERNEL = 6;
+const static uint WINDOW_SIZE = KERNEL_SIZE + BLUR_KERNEL * 2;
+const static uint HALF_WINDOW_SIZE = WINDOW_SIZE / 2;
+const static uint SIZE = 2 * BLUR_KERNEL + 1;
+const static uint NUM_DATA = WINDOW_SIZE / 2;
+
+RWTexture2D<half4> Result;
+groupshared uint mainCachedR[WINDOW_SIZE * WINDOW_SIZE];
+groupshared uint mainCachedG[WINDOW_SIZE * WINDOW_SIZE];
+groupshared uint mainCachedB[WINDOW_SIZE * WINDOW_SIZE];
+groupshared uint mainCachedA[WINDOW_SIZE * WINDOW_SIZE];
+
+half4 LoadPixel(uint id)
+{
+    return asfloat(uint4(mainCachedR[id], mainCachedG[id], mainCachedB[id], mainCachedA[id]));
+}
+
+void StorePixel(uint id, half4 value)
+{
+    mainCachedR[id] = asuint(value.r);
+    mainCachedG[id] = asuint(value.g);
+    mainCachedB[id] = asuint(value.b);
+    mainCachedA[id] = asuint(value.a);
+}
+
+half vecLen(half4 x, half4 y)
+{
+    return length(x - y);
+}
+
+float normPdf(float x, float sigma)
+{
+    return 0.39894 * exp(-0.5 * x * x / (sigma * sigma)) / sigma;
+}
+
+[numthreads(16, 16, 1)]
+void CSBilateral(uint3 groupId : SV_GroupId, uint groupIndex : SV_GroupIndex, uint3 groupThreadId : SV_GroupThreadID, uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (groupThreadId.x < HALF_WINDOW_SIZE && groupThreadId.y < HALF_WINDOW_SIZE)
+    {
+        uint2 offsetId = -BLUR_KERNEL + groupThreadId.xy * 2;
+        uint2 topmostGlobalId = groupId.xy * KERNEL_SIZE + offsetId;
+        uint topMostIndex = groupThreadId.y * 2 * WINDOW_SIZE + groupThreadId.x * 2;
+        StorePixel(topMostIndex, Result[topmostGlobalId]);
+        StorePixel(topMostIndex + 1, Result[topmostGlobalId + uint2(1, 0)]);
+        StorePixel(topMostIndex + WINDOW_SIZE, Result[topmostGlobalId + uint2(0, 1)]);
+        StorePixel(topMostIndex + WINDOW_SIZE + 1, Result[topmostGlobalId + uint2(1, 1)]);
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    uint2 topmostId = BLUR_KERNEL + groupThreadId.xy;
+    uint topmostIndex = topmostId.y * WINDOW_SIZE + topmostId.x;
+
+    float4 c = Result[dispatchThreadId.xy];
+
+    const float sigma = 8;
+    const float bSigma = 0.2;
+
+    float kernel[BLUR_KERNEL * 2 + 1];
+    float4 finalColor = 0;
+    // Create the 1-D kernel
+    float Z = 0;
+    for (int i = 0; i <= BLUR_KERNEL; ++i)
+    {
+        kernel[BLUR_KERNEL + i] = kernel[BLUR_KERNEL - i] = normPdf(float(i), sigma);
+    }
+    float4 cc;
+    float factor;
+    float bZ = 1.0 / normPdf(0.0, bSigma);
+
+    // Read out the texels
+	[unroll]
+    for (int x = -BLUR_KERNEL; x <= BLUR_KERNEL; ++x)
+    {
+            uint pos = topmostIndex + x;
+            cc = LoadPixel(pos);
+            factor = normPdf(vecLen(cc, c), bSigma) * bZ * kernel[BLUR_KERNEL + x];
+            Z += factor;
+            finalColor += factor * cc;
+    }
+
+    StorePixel(topmostIndex, finalColor / Z);
+    GroupMemoryBarrierWithGroupSync();
+
+    c = LoadPixel(topmostIndex);
+    finalColor = 0;
+    Z = 0;
+
+	[unroll]
+    for (int y = -BLUR_KERNEL; y <= BLUR_KERNEL; ++y)
+    {
+        uint pos = topmostIndex + y * WINDOW_SIZE;
+        cc = LoadPixel(pos);
+        factor = normPdf(vecLen(cc, c), bSigma) * bZ * kernel[BLUR_KERNEL + y];
+        Z += factor;
+        finalColor += factor * cc;
+    }
+
+    Result[dispatchThreadId.xy] = finalColor / Z;
+}
