@@ -41,12 +41,12 @@ Just add a new effect in a post processing profile under `Custom/Stochastic Scre
 * Based mainly on [Tomasz Stachowiak and Yasin Uludag, Siggraph15](https://www.ea.com/frostbite/news/stochastic-screen-space-reflections)
 
 # Showcase
-https://www.youtube.com/watch?v=9D0kRA7vSCQ
+[![](https://img.youtube.com/vi/9D0kRA7vSCQ/default.jpg)](https://www.youtube.com/watch?v=9D0kRA7vSCQ)
 
-https://www.youtube.com/watch?v=LuLO25cPwyI
+[![](https://img.youtube.com/vi/LuLO25cPwyI/default.jpg)](https://www.youtube.com/watch?v=LuLO25cPwyI)
 
 # Real life usage
-https://www.youtube.com/watch?v=MtAYmqzJM5g
+[![](https://img.youtube.com/vi/MtAYmqzJM5g/default.jpg)](https://www.youtube.com/watch?v=MtAYmqzJM5g)
 
 # Screenshots
 
