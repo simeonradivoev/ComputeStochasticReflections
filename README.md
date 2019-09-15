@@ -42,7 +42,6 @@ Just add a new effect in a post processing profile under `Custom/Stochastic Scre
 
 # Showcase
 [![](https://img.youtube.com/vi/9D0kRA7vSCQ/default.jpg)](https://www.youtube.com/watch?v=9D0kRA7vSCQ)
-
 [![](https://img.youtube.com/vi/LuLO25cPwyI/default.jpg)](https://www.youtube.com/watch?v=LuLO25cPwyI)
 
 # Real life usage
