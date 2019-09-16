@@ -1,4 +1,6 @@
 	//The MIT License(MIT)
+// Upgrade NOTE: excluded shader from DX11, OpenGL ES 2.0 because it uses unsized arrays
+#pragma exclude_renderers d3d11 gles
 
 //Copyright(c) 2016 Charles Greivelding Thomas
 
@@ -44,6 +46,8 @@ uniform sampler2D	_CameraDepthTexture; // Unity depth
 uniform sampler2D_half _CameraMotionVectorsTexture;
 
 uniform float4		_MainTex_TexelSize;
+uniform float4		_MainTex_ST;
+uniform float4		_BlitInput_ST;
 uniform float4      _CameraDepthTexture_TexelSize;
 uniform float4      _VisibilityMask_TexelSize;
 uniform float4		_ReflectionBuffer_TexelSize;
@@ -57,42 +61,89 @@ uniform float       _MipLevel;
 uniform bool        _MaskBlur;
 
 uniform float4x4	_InverseViewProjectionMatrix;
+uniform float4x4	_InverseViewProjectionMatrixStereo[2];
 uniform float4x4	_WorldToCameraMatrix;
+uniform float4x4	_WorldToCameraMatrixStereo[2];
 
 //Debug Options
 uniform float		_UseFresnel;
 uniform int			_DebugPass;
 
-float sqr(float x)
+uniform bool		_UseStereo;
+
+//gets 0 or 1 index based on screen UV.
+//left part is for left eye and right is for right eye.
+inline int GetEyeIndex(float2 uv)
+{
+    return uv.x < 0.5 ? 0 : 1;
+}
+
+inline float4x4 GetWorldToCamera(float2 uv)
+{
+#if UNITY_SINGLE_PASS_STEREO
+	return _WorldToCameraMatrixStereo[GetEyeIndex(uv)];
+#else
+    return _WorldToCameraMatrix;
+#endif
+}
+
+inline float4x4 GetInverseViewProjection(float2 uv)
+{
+#if UNITY_SINGLE_PASS_STEREO
+	return _InverseViewProjectionMatrixStereo[GetEyeIndex(uv)];
+#else
+    return _InverseViewProjectionMatrix;
+#endif
+}
+
+inline float sqr(float x)
 {
 	return x*x;
 }
 	
-float fract(float x)
+inline float fract(float x)
 {
 	return x - floor( x );
 }
 
-float4 GetSampleColor (sampler2D tex, float2 uv) { return tex2D(tex, uv); }
-float4 GetCubeMap (float2 uv) { return tex2D(_CameraReflectionsTexture, uv); }
-float4 GetAlbedo (float2 uv) { return tex2D(_CameraGBufferTexture0, uv); }
+inline float4 GetSampleColor(sampler2D tex, float2 uv)
+{
+    return tex2D(tex, uv);
+}
+
+inline float4 GetCubeMap(float2 uv)
+{
+    return tex2D(_CameraReflectionsTexture, uv);
+}
+
+inline float4 GetAlbedo(float2 uv)
+{
+    return tex2D(_CameraGBufferTexture0, uv);
+}
+
 float4 GetSpecular (float2 uv,float type) 
 {
     float4 spec = tex2D(_CameraGBufferTexture1, uv);
     spec.gb = lerp(spec.gb, spec.rr, 1-type);
     return spec;
 }
+
 float4 GetNormal (float2 uv) 
 { 
 	float4 gbuffer2 = tex2D(_CameraGBufferTexture2, uv);
-
     return float4(gbuffer2.rgb * 2 - 1, gbuffer2.a);
 }
 
-float4 GetVelocity(float2 uv)    { return tex2D(_CameraMotionVectorsTexture, uv); }
-float4 GetReflection(float2 uv)    { return tex2D(_ReflectionBuffer, uv); }
+inline float4 GetVelocity(float2 uv)
+{
+    return tex2D(_CameraMotionVectorsTexture, uv);
+}
+inline float4 GetReflection(float2 uv)
+{
+    return tex2D(_ReflectionBuffer, uv);
+}
 
-float ComputeDepth(float4 clippos)
+inline float ComputeDepth(float4 clippos)
 {
 #if defined(SHADER_TARGET_GLSL) || defined(SHADER_API_GLES) || defined(SHADER_API_GLES3)
 	return (clippos.z / clippos.w) * 0.5 + 0.5;
@@ -101,35 +152,36 @@ float ComputeDepth(float4 clippos)
 #endif
 }
 
-float3 GetViewNormal (float3 normal)
+float3 GetViewNormal (float3 normal,float screenUv)
 {
-	float3 viewNormal =  mul((float3x3)_WorldToCameraMatrix, normal.rgb);
+    float4x4 worldToCamera = GetWorldToCamera(screenUv);
+    float3 viewNormal = mul((float3x3) worldToCamera, normal.rgb);
 	return normalize(viewNormal);
 }
 
-float GetDepth (sampler2D tex, float2 uv)
+inline float GetDepth(sampler2D tex, float2 uv)
 {
     return tex2Dlod(tex, float4(uv, 0, 0)).r;
 }
 
-float GetDepth (sampler2D tex, float2 uv, float mip)
+inline float GetDepth(sampler2D tex, float2 uv, float mip)
 {
 	return tex2Dlod(tex, float4(uv, 0, mip));
 }
 
-float3 GetScreenPos (float2 uv, float depth)
+inline float3 GetScreenPos(float2 uv, float depth)
 {
 	return float3(uv * 2 - 1, depth);
 }
 
-float3 GetWorlPos (float3 screenPos)
+float3 GetWorlPos(float3 screenPos,float screenUv)
 {
-	float4 worldPos = mul(_InverseViewProjectionMatrix, float4(screenPos, 1));
+    float4x4 inverseViewProjection = GetInverseViewProjection(screenUv);
+    float4 worldPos = mul(inverseViewProjection, float4(screenPos, 1));
 	return worldPos.xyz / worldPos.w;
 }
-
 	
-float3 GetViewDir (float3 worldPos)
+inline float3 GetViewDir(float3 worldPos)
 {
 	return normalize(worldPos - _WorldSpaceCameraPos);
 }

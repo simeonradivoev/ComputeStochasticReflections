@@ -74,7 +74,7 @@ Shader "Hidden/Stochastic SSR"
 		float4 diffuse =  GetAlbedo(uv);
 		float4 worldNormal = GetNormal (uv);
 		float3 screenPos = GetScreenPos(uv, depth);
-		float3 worldPos = GetWorlPos(screenPos);
+		float3 worldPos = GetWorlPos(screenPos, uv);
 		float4 specular = GetSpecular (uv,worldNormal.a);
 		float smoothness = specular.a;
 		float occlusion = diffuse.a;
@@ -129,11 +129,12 @@ Shader "Hidden/Stochastic SSR"
 
 	float4 combine( VertexOutput i ) : SV_Target
 	{	 
-		float2 uv = i.uv;
+        float2 rawUv = i.uv;
+		float2 uv = UnityStereoTransformScreenSpaceTex(i.uv);
 
 		float depth = GetDepth(_CameraDepthTexture, uv);
-		float3 screenPos = GetScreenPos(uv, depth);
-		float3 worldPos = GetWorlPos(screenPos);
+		float3 screenPos = GetScreenPos(rawUv, depth);
+		float3 worldPos = GetWorlPos(screenPos, rawUv);
 
 		float3 cubemap = GetCubeMap (uv);
 		float4 worldNormal = GetNormal (uv);

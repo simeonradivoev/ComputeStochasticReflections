@@ -24,16 +24,24 @@ float4 ScreenSize;
 float4 ResolveSize;
 float3 WorldSpaceCameraPos;
 float4x4 ProjectionMatrix;
+float4x4 ProjectionMatrixStereo[2];
 float4x4 InverseProjectionMatrix;
+float4x4 InverseProjectionMatrixStereo[2];
 float4x4 WorldToCameraMatrix;
+float4x4 WorldToCameraMatrixStereo[2];
 float4x4 CameraToWorldMatrix;
+float4x4 CameraToWorldMatrixStereo[2];
 float4x4 PrevViewProjectionMatrix;
+float4x4 PrevViewProjectionMatrixStereo[2];
 float4x4 ViewProjectionMatrix;
+float4x4 ViewProjectionMatrixStereo[2];
 float4x4 InverseViewProjectionMatrix;
+float4x4 InverseViewProjectionMatrixStereo[2];
 float4 RayCastSize;
 float4 JitterSizeAndOffset;
 float4 ProjectionParams;
 float4 ZBufferParams;
+bool UseStereo;
 
 cbuffer VS_PROPERTIES_BUFFER
 {
@@ -52,9 +60,50 @@ cbuffer VS_PROPERTIES_BUFFER
     int Normalization;
 }
 
-float3 GetViewNormal(float3 normal)
+inline int GetEyeIndex(float2 uv)
 {
-    float3 viewNormal = mul((float3x3)WorldToCameraMatrix, normal.rgb);
+    return uv.x < 0.5 ? 0 : 1;
+}
+
+inline float4x4 GetCameraToWorld(float2 uv)
+{
+    return UseStereo ? CameraToWorldMatrixStereo[GetEyeIndex(uv)] : CameraToWorldMatrix;
+}
+
+inline float4x4 GetWorldToCamera(float2 uv)
+{
+    return UseStereo ? WorldToCameraMatrixStereo[GetEyeIndex(uv)] : WorldToCameraMatrix;
+}
+
+inline float4x4 GetViewProjection(float2 uv)
+{
+    return UseStereo ? ViewProjectionMatrixStereo[GetEyeIndex(uv)] : ViewProjectionMatrix;
+}
+
+inline float4x4 GetPrevViewProjection(float2 uv)
+{
+    return UseStereo ? PrevViewProjectionMatrixStereo[GetEyeIndex(uv)] : PrevViewProjectionMatrix;
+}
+
+inline float4x4 GetProjection(float2 uv)
+{
+    return UseStereo ? ProjectionMatrixStereo[GetEyeIndex(uv)] : ProjectionMatrix;
+}
+
+inline float4x4 GetInverseProjection(float2 uv)
+{
+    return UseStereo ? InverseProjectionMatrixStereo[GetEyeIndex(uv)] : InverseProjectionMatrix;
+}
+
+inline float4x4 GetInverseViewProjection(float2 uv)
+{
+    return UseStereo ? InverseViewProjectionMatrixStereo[GetEyeIndex(uv)] : InverseViewProjectionMatrix;
+}
+
+float3 GetViewNormal(float3 normal,float2 screenUv)
+{
+    float4x4 worldToCamera = GetWorldToCamera(screenUv);
+    float3 viewNormal = mul((float3x3) WorldToCameraMatrix, normal.rgb);
     return normalize(viewNormal);
 }
 
@@ -90,9 +139,10 @@ float3 GetScreenPos(float2 uv, float depth)
     return float3(uv * 2 - 1, depth);
 }
 
-float3 GetViewPos(float3 screenPos)
+float3 GetViewPos(float3 screenPos, float2 screenUv)
 {
-    float4 viewPos = mul(InverseProjectionMatrix, float4(screenPos, 1));
+    float4x4 inverseProjection = GetInverseProjection(screenUv);
+    float4 viewPos = mul(inverseProjection, float4(screenPos, 1));
     return viewPos.xyz / viewPos.w;
 }
 
@@ -101,9 +151,10 @@ float2 GetVelocity(float2 uv)
     return CameraMotionVectorsTexture.SampleLevel(samplerCameraMotionVectorsTexture, uv, 0).xy;
 }
 
-float3 GetWorlPos(float3 screenPos)
+float3 GetWorlPos(float3 screenPos, float2 screenUv)
 {
-    float4 worldPos = mul(InverseViewProjectionMatrix, float4(screenPos, 1));
+    float4x4 inverseViewProjection = GetInverseViewProjection(screenUv);
+    float4 worldPos = mul(inverseViewProjection, float4(screenPos, 1));
     return worldPos.xyz / worldPos.w;
 }
 
@@ -126,7 +177,8 @@ inline half Luminance(half3 rgb)
 
 float3 GetViewRay(float2 uv)
 {
-    float4 _CamScreenDir = float4(1.0 / ProjectionMatrix[0][0], 1.0 / ProjectionMatrix[1][1], 1, 1);
+    float4x4 projectionMatrix = GetProjection(uv);
+    float4 _CamScreenDir = float4(1.0 / projectionMatrix[0][0], 1.0 / projectionMatrix[1][1], 1, 1);
     float3 ray = float3(uv.x * 2 - 1, uv.y * 2 - 1, 1);
     ray *= _CamScreenDir.xyz;
     ray = ray * (ProjectionParams.z / ray.z);
@@ -146,13 +198,18 @@ float LinearEyeDepth(float z)
 
 half2 CalculateMotion(float rawDepth, float2 inUV)
 {
+    bool useStereo = UseStereo;
+    float4x4 cameraToWorld = GetCameraToWorld(inUV);
+    float4x4 viewProjection = GetViewProjection(inUV);
+    float4x4 prevViewProjection = GetPrevViewProjection(inUV);
+
     float depth = Linear01Depth(rawDepth);
     float3 ray = GetViewRay(inUV);
     float3 vPos = ray * depth;
-    float4 worldPos = mul(CameraToWorldMatrix, float4(vPos, 1.0));
+    float4 worldPos = mul(cameraToWorld, float4(vPos, 1.0));
 
-    float4 prevClipPos = mul(PrevViewProjectionMatrix, worldPos);
-    float4 curClipPos = mul(ViewProjectionMatrix, worldPos);
+    float4 prevClipPos = mul(prevViewProjection, worldPos);
+    float4 curClipPos = mul(viewProjection, worldPos);
 
     float2 prevHPos = prevClipPos.xy / prevClipPos.w;
     float2 curHPos = curClipPos.xy / curClipPos.w;

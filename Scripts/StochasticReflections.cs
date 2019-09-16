@@ -78,8 +78,11 @@ namespace Trive.Rendering
 			public static int RayCastSize = Shader.PropertyToID("RayCastSize");
 			public static int SmoothnessRange = Shader.PropertyToID("SmoothnessRange");
 			public static int WorldToCameraMatrix = Shader.PropertyToID("WorldToCameraMatrix");
+			public static int WorldToCameraMatrixStereo = Shader.PropertyToID("WorldToCameraMatrixStereo");
 			public static int InverseProjectionMatrix = Shader.PropertyToID("InverseProjectionMatrix");
+			public static int InverseProjectionMatrixStereo = Shader.PropertyToID("InverseProjectionMatrixStereo");
 			public static int ProjectionMatrix = Shader.PropertyToID("ProjectionMatrix");
+			public static int ProjectionMatrixStereo = Shader.PropertyToID("ProjectionMatrixLeftStereo");
 			public static int ScreenSize = Shader.PropertyToID("ScreenSize");
 			public static int ResolveSize = Shader.PropertyToID("ResolveSize");
 			public static int MinDepth = Shader.PropertyToID("MinDepth");
@@ -96,16 +99,20 @@ namespace Trive.Rendering
 			public static int RaycastInput = Shader.PropertyToID("RaycastInput");
 			public static int MaskInput = Shader.PropertyToID("MaskInput");
 			public static int PrevViewProjectionMatrix = Shader.PropertyToID("PrevViewProjectionMatrix");
+			public static int PrevViewProjectionMatrixStereo = Shader.PropertyToID("PrevViewProjectionMatrixStereo");
 			public static int TResponseMin = Shader.PropertyToID("TResponseMin");
 			public static int TResponseMax = Shader.PropertyToID("TResponseMax");
 			public static int CameraToWorldMatrix = Shader.PropertyToID("CameraToWorldMatrix");
+			public static int CameraToWorldMatrixStereo = Shader.PropertyToID("CameraToWorldMatrixStereo");
 			public static int ViewProjectionMatrix = Shader.PropertyToID("ViewProjectionMatrix");
+			public static int ViewProjectionMatrixStereo = Shader.PropertyToID("ViewProjectionMatrixStereo");
 			public static int ProjectionParams = Shader.PropertyToID("ProjectionParams");
 			public static int ZBufferParams = Shader.PropertyToID("ZBufferParams");
 			public static int PreviousTemporalInput = Shader.PropertyToID("PreviousTemporalInput");
 			public static int TemporalResult = Shader.PropertyToID("TemporalResult");
 			public static int CameraDepthTexture = Shader.PropertyToID("CameraDepthTexture");
 			public static int InverseViewProjectionMatrix = Shader.PropertyToID("InverseViewProjectionMatrix");
+			public static int InverseViewProjectionMatrixStereo = Shader.PropertyToID("InverseViewProjectionMatrixStereo");
 			public static int Source = Shader.PropertyToID("_Source");
 			public static int Result = Shader.PropertyToID("_Result");
 			public static int Size = Shader.PropertyToID("_Size");
@@ -113,6 +120,7 @@ namespace Trive.Rendering
 			public static int BlurResult = Shader.PropertyToID("Result");
 			public static int CostMap = Shader.PropertyToID("CostMap");
 			public static int Normalization = Shader.PropertyToID("Normalization");
+			public static int UseStereo = Shader.PropertyToID("UseStereo");
 		}
 
 		public static class Uniforms
@@ -120,7 +128,9 @@ namespace Trive.Rendering
 			public static int UseFresnel = Shader.PropertyToID("_UseFresnel");
 			public static int DebugPass = Shader.PropertyToID("_DebugPass");
 			public static int InverseViewProjectionMatrix = Shader.PropertyToID("_InverseViewProjectionMatrix");
+			public static int InverseViewProjectionMatrixStereo = Shader.PropertyToID("_InverseViewProjectionMatrixStereo");
 			public static int WorldToCameraMatrix = Shader.PropertyToID("_WorldToCameraMatrix");
+			public static int WorldToCameraMatrixStereo = Shader.PropertyToID("_WorldToCameraMatrixStereo");
 			public static int JitterSizeAndOffset = Shader.PropertyToID("_JitterSizeAndOffset");
 			public static int ScreenSize = Shader.PropertyToID("_ScreenSize");
 			public static int Raycast = Shader.PropertyToID("_RayCast");
@@ -152,6 +162,7 @@ namespace Trive.Rendering
 		private RenderTexture mainBuffer;
 		private RenderTexture temporalBuffer;
 		private Matrix4x4 prevViewProjectionMatrix;
+		private readonly Matrix4x4[] prevViewProjectionMatrixStereo = new Matrix4x4[2];
 		private ComputeShader computeShader;
 		private ComputeShader blurShader;
 		private ComputeShader depthPyramidShader;
@@ -212,18 +223,21 @@ namespace Trive.Rendering
 
 		private void UpdateParameters(PostProcessRenderContext context,PropertySheet sheet)
 		{
-			context.command.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.Noise, noise);
-			context.command.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.Noise, noise);
-			context.command.SetComputeVectorParam(computeShader, ComputeUniforms.NoiseSize, new Vector4(noise.width, noise.height, 1.0f / noise.width, 1.0f / noise.height));
-			context.command.SetComputeFloatParam(computeShader, ComputeUniforms.SmoothnessRange, settings.smoothnessRange);
-			context.command.SetComputeIntParam(computeShader, ComputeUniforms.NumSteps, settings.rayDistance);
-			context.command.SetComputeFloatParam(computeShader, ComputeUniforms.Thickness, settings.thickness);
-			context.command.SetComputeFloatParam(computeShader, ComputeUniforms.BDRFBias, settings.BRDFBias);
-			context.command.SetComputeFloatParam(computeShader, ComputeUniforms.EdgeFactor, settings.screenFadeSize);
-			context.command.SetComputeFloatParam(computeShader, ComputeUniforms.EdgeFactor, settings.screenFadeSize);
-			context.command.SetComputeFloatParam(computeShader, ComputeUniforms.TResponseMin, settings.temporalResponseMin);
-			context.command.SetComputeFloatParam(computeShader, ComputeUniforms.TResponseMax, settings.temporalResponseMax);
-			context.command.SetComputeIntParam(computeShader,ComputeUniforms.Normalization,settings.normalization ? 1 : 0);
+			var commandBuffer = context.command;
+
+			commandBuffer.SetComputeIntParam(computeShader,ComputeUniforms.UseStereo, context.camera.stereoEnabled && context.camera.stereoActiveEye == Camera.MonoOrStereoscopicEye.Mono ? 1 : 0);
+			commandBuffer.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.Noise, noise);
+			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.Noise, noise);
+			commandBuffer.SetComputeVectorParam(computeShader, ComputeUniforms.NoiseSize, new Vector4(noise.width, noise.height, 1.0f / noise.width, 1.0f / noise.height));
+			commandBuffer.SetComputeFloatParam(computeShader, ComputeUniforms.SmoothnessRange, settings.smoothnessRange);
+			commandBuffer.SetComputeIntParam(computeShader, ComputeUniforms.NumSteps, settings.rayDistance);
+			commandBuffer.SetComputeFloatParam(computeShader, ComputeUniforms.Thickness, settings.thickness);
+			commandBuffer.SetComputeFloatParam(computeShader, ComputeUniforms.BDRFBias, settings.BRDFBias);
+			commandBuffer.SetComputeFloatParam(computeShader, ComputeUniforms.EdgeFactor, settings.screenFadeSize);
+			commandBuffer.SetComputeFloatParam(computeShader, ComputeUniforms.EdgeFactor, settings.screenFadeSize);
+			commandBuffer.SetComputeFloatParam(computeShader, ComputeUniforms.TResponseMin, settings.temporalResponseMin);
+			commandBuffer.SetComputeFloatParam(computeShader, ComputeUniforms.TResponseMax, settings.temporalResponseMax);
+			commandBuffer.SetComputeIntParam(computeShader,ComputeUniforms.Normalization,settings.normalization ? 1 : 0);
 
 			sheet.properties.SetInt(Uniforms.UseFresnel, settings.useFresnel ? 1 : 0);
 			sheet.properties.SetInt(Uniforms.MaskBlur, settings.blurring ? 1 : 0);
@@ -231,16 +245,46 @@ namespace Trive.Rendering
 			sheet.properties.SetFloat(Uniforms.Intensity, settings.intensity.value);
 		}
 
-		private Matrix4x4 UpdateMatrices(PostProcessRenderContext context, PropertySheet sheet)
+		private readonly Matrix4x4[] cameraToWorldMatrixStereo = new Matrix4x4[2];
+		private readonly Matrix4x4[] worldToCameraMatrixStereo = new Matrix4x4[2];
+		private readonly Matrix4x4[] viewProjectionMatrixStereo = new Matrix4x4[2];
+		private readonly Matrix4x4[] projectionMatrixStereo = new Matrix4x4[2];
+		private readonly Matrix4x4[] inverseProjectionMatrixStereo = new Matrix4x4[2];
+		private readonly Matrix4x4[] inverseViewProjectionMatrixStereo = new Matrix4x4[2];
+
+		private Matrix4x4 GetProjectionMatrix(Camera camera)
 		{
-			var worldToCameraMatrix = context.camera.worldToCameraMatrix;
-			var cameraToWorldMatrix = context.camera.cameraToWorldMatrix;
+			if (camera.stereoEnabled)
+			{
+				return camera.GetStereoProjectionMatrix(camera.stereoActiveEye == Camera.MonoOrStereoscopicEye.Right ? Camera.StereoscopicEye.Right : Camera.StereoscopicEye.Left);
+			}
+
+			return camera.projectionMatrix;
+		}
+
+		private Matrix4x4 GetWorldToCamera(Camera camera)
+		{
+			if (camera.stereoEnabled)
+			{
+				return camera.GetStereoViewMatrix(camera.stereoActiveEye == Camera.MonoOrStereoscopicEye.Right ? Camera.StereoscopicEye.Right : Camera.StereoscopicEye.Left);
+			}
+
+			return camera.worldToCameraMatrix;
+		}
+
+		private void UpdateMatrices(PostProcessRenderContext context, PropertySheet sheet)
+		{
+			var camera = context.camera;
+			var commandBuffer = context.command;
+
+			var worldToCameraMatrix = GetWorldToCamera(camera);
+			var cameraToWorldMatrix = Matrix4x4.Inverse(worldToCameraMatrix);
 
 			cameraToWorldMatrix.m02 *= -1;
 			cameraToWorldMatrix.m12 *= -1;
 			cameraToWorldMatrix.m22 *= -1;
 
-			var projectionMatrix = GL.GetGPUProjectionMatrix(context.camera.projectionMatrix, false);
+			var projectionMatrix = GL.GetGPUProjectionMatrix(GetProjectionMatrix(camera), false);
 
 			var viewProjectionMatrix = projectionMatrix * worldToCameraMatrix;
 			var inverseViewProjectionMatrix = Matrix4x4.Inverse(viewProjectionMatrix);
@@ -249,16 +293,54 @@ namespace Trive.Rendering
 			sheet.properties.SetMatrix(Uniforms.InverseViewProjectionMatrix, inverseViewProjectionMatrix);
 			sheet.properties.SetVector(Uniforms.ScreenSize, new Vector4(context.width, context.height, 1.0f / context.width, 1.0f / context.height));
 
-			context.command.SetComputeMatrixParam(computeShader, ComputeUniforms.WorldToCameraMatrix, worldToCameraMatrix);
-			context.command.SetComputeMatrixParam(computeShader, ComputeUniforms.ProjectionMatrix, projectionMatrix);
-			context.command.SetComputeMatrixParam(computeShader, ComputeUniforms.InverseProjectionMatrix, Matrix4x4.Inverse(projectionMatrix));
-			context.command.SetComputeMatrixParam(computeShader, ComputeUniforms.InverseViewProjectionMatrix, inverseViewProjectionMatrix);
-			context.command.SetComputeVectorParam(computeShader, ComputeUniforms.WorldSpaceCameraPos, context.camera.transform.position);
-			context.command.SetComputeMatrixParam(computeShader, ComputeUniforms.CameraToWorldMatrix, cameraToWorldMatrix);
-			context.command.SetComputeMatrixParam(computeShader, ComputeUniforms.ViewProjectionMatrix, viewProjectionMatrix);
-			context.command.SetComputeMatrixParam(computeShader, ComputeUniforms.PrevViewProjectionMatrix, prevViewProjectionMatrix);
+			commandBuffer.SetComputeMatrixParam(computeShader, ComputeUniforms.WorldToCameraMatrix, worldToCameraMatrix);
+			commandBuffer.SetComputeMatrixParam(computeShader, ComputeUniforms.ProjectionMatrix, projectionMatrix);
+			commandBuffer.SetComputeMatrixParam(computeShader, ComputeUniforms.InverseProjectionMatrix, Matrix4x4.Inverse(projectionMatrix));
+			commandBuffer.SetComputeMatrixParam(computeShader, ComputeUniforms.InverseViewProjectionMatrix, inverseViewProjectionMatrix);
+			commandBuffer.SetComputeVectorParam(computeShader, ComputeUniforms.WorldSpaceCameraPos, camera.transform.position);
+			commandBuffer.SetComputeMatrixParam(computeShader, ComputeUniforms.CameraToWorldMatrix, cameraToWorldMatrix);
+			commandBuffer.SetComputeMatrixParam(computeShader, ComputeUniforms.ViewProjectionMatrix, viewProjectionMatrix);
+			commandBuffer.SetComputeMatrixParam(computeShader, ComputeUniforms.PrevViewProjectionMatrix, prevViewProjectionMatrix);
 
-			return viewProjectionMatrix;
+			if (camera.stereoEnabled)
+			{
+				cameraToWorldMatrixStereo[0] = camera.GetStereoViewMatrix(Camera.StereoscopicEye.Left);
+				cameraToWorldMatrixStereo[1] = camera.GetStereoViewMatrix(Camera.StereoscopicEye.Right);
+
+				for (int i = 0; i < cameraToWorldMatrixStereo.Length; i++)
+					worldToCameraMatrixStereo[i] = Matrix4x4.Inverse(cameraToWorldMatrixStereo[i]);
+
+				projectionMatrixStereo[0] = GL.GetGPUProjectionMatrix(camera.GetStereoProjectionMatrix(Camera.StereoscopicEye.Left), false);
+				projectionMatrixStereo[1] = GL.GetGPUProjectionMatrix(camera.GetStereoProjectionMatrix(Camera.StereoscopicEye.Right), false);
+
+				for (int i = 0; i < projectionMatrixStereo.Length; i++)
+					inverseProjectionMatrixStereo[i] = Matrix4x4.Inverse(projectionMatrixStereo[i]);
+
+				for (int i = 0; i < viewProjectionMatrixStereo.Length; i++)
+					viewProjectionMatrixStereo[i] = projectionMatrixStereo[i] * worldToCameraMatrixStereo[i];
+
+				for (int i = 0; i < inverseViewProjectionMatrixStereo.Length; i++)
+					inverseViewProjectionMatrixStereo[i] = Matrix4x4.Inverse(projectionMatrixStereo[i]);
+
+				sheet.properties.SetMatrixArray(Uniforms.WorldToCameraMatrixStereo, worldToCameraMatrixStereo);
+				sheet.properties.SetMatrixArray(Uniforms.InverseViewProjectionMatrixStereo, inverseViewProjectionMatrixStereo);
+
+				commandBuffer.SetComputeMatrixArrayParam(computeShader, ComputeUniforms.WorldToCameraMatrixStereo, worldToCameraMatrixStereo);
+				commandBuffer.SetComputeMatrixArrayParam(computeShader, ComputeUniforms.ProjectionMatrixStereo, projectionMatrixStereo);
+				commandBuffer.SetComputeMatrixArrayParam(computeShader, ComputeUniforms.InverseProjectionMatrixStereo, inverseProjectionMatrixStereo);
+				commandBuffer.SetComputeMatrixArrayParam(computeShader, ComputeUniforms.InverseViewProjectionMatrixStereo, inverseViewProjectionMatrixStereo);
+				commandBuffer.SetComputeMatrixArrayParam(computeShader, ComputeUniforms.CameraToWorldMatrixStereo, cameraToWorldMatrixStereo);
+				commandBuffer.SetComputeMatrixArrayParam(computeShader, ComputeUniforms.ViewProjectionMatrixStereo, viewProjectionMatrixStereo);
+				commandBuffer.SetComputeMatrixArrayParam(computeShader, ComputeUniforms.PrevViewProjectionMatrixStereo, prevViewProjectionMatrixStereo);
+
+				sheet.properties.SetMatrixArray(Uniforms.WorldToCameraMatrixStereo, worldToCameraMatrixStereo);
+				sheet.properties.SetMatrixArray(Uniforms.InverseViewProjectionMatrixStereo, inverseViewProjectionMatrixStereo);
+
+				for (int i = 0; i < viewProjectionMatrixStereo.Length; i++)
+					prevViewProjectionMatrixStereo[i] = viewProjectionMatrixStereo[i];
+			}
+
+			prevViewProjectionMatrix = viewProjectionMatrix;
 		}
 
 		private void CreateTextures(PostProcessRenderContext context)
@@ -304,17 +386,22 @@ namespace Trive.Rendering
 
 		public override void Render(PostProcessRenderContext context)
 		{
-			context.command.BeginSample("Stochastic Reflection");
+			var camera = context.camera;
+			var commandBuffer = context.command;
+			int width = context.width;
+			int height = context.height;
+
+			commandBuffer.BeginSample("Stochastic Reflection");
 
 			var sheet = context.propertySheets.Get("Hidden/Stochastic SSR");
 
 			UpdateParameters(context,sheet);
-			var viewProjectionMatrix = UpdateMatrices(context, sheet);
+			UpdateMatrices(context, sheet);
 			CreateTextures(context);
 
-			Vector2Int costMapSize = new Vector2Int(context.width,context.height);
-			Vector2Int raycastSize = new Vector2Int(context.width, context.height);
-			Vector2Int resolveSize = new Vector2Int(context.width,context.height);
+			Vector2Int costMapSize = new Vector2Int(width,height);
+			Vector2Int raycastSize = new Vector2Int(width, height);
+			Vector2Int resolveSize = new Vector2Int(width,height);
 			if (settings.raycastDownsample)
 			{
 				raycastSize.x /= 2;
@@ -327,17 +414,17 @@ namespace Trive.Rendering
 				resolveSize.y /= 2;
 			}
 
-			context.command.SetComputeVectorParam(computeShader, ComputeUniforms.ProjectionParams, CalculateProjectionParams(context.camera));
-			context.command.SetComputeVectorParam(computeShader, ComputeUniforms.ZBufferParams, CalculateZBufferParams(context.camera));
-			context.command.SetComputeVectorParam(computeShader, ComputeUniforms.ScreenSize, new Vector4(context.width, context.height, 1.0f / context.width, 1.0f / context.height));
-			context.command.SetComputeVectorParam(computeShader, ComputeUniforms.RayCastSize, new Vector4(raycastSize.x, raycastSize.y, 1.0f / raycastSize.x, 1.0f / raycastSize.y));
-			context.command.SetComputeVectorParam(computeShader, ComputeUniforms.ResolveSize, new Vector4(resolveSize.x, resolveSize.y, 1.0f / resolveSize.x, 1.0f / resolveSize.y));
+			commandBuffer.SetComputeVectorParam(computeShader, ComputeUniforms.ProjectionParams, CalculateProjectionParams(camera));
+			commandBuffer.SetComputeVectorParam(computeShader, ComputeUniforms.ZBufferParams, CalculateZBufferParams(camera));
+			commandBuffer.SetComputeVectorParam(computeShader, ComputeUniforms.ScreenSize, new Vector4(width, height, 1.0f / width, 1.0f / height));
+			commandBuffer.SetComputeVectorParam(computeShader, ComputeUniforms.RayCastSize, new Vector4(raycastSize.x, raycastSize.y, 1.0f / raycastSize.x, 1.0f / raycastSize.y));
+			commandBuffer.SetComputeVectorParam(computeShader, ComputeUniforms.ResolveSize, new Vector4(resolveSize.x, resolveSize.y, 1.0f / resolveSize.x, 1.0f / resolveSize.y));
 
 			Vector2 jitterSample = GenerateRandomOffset();
-			context.command.SetComputeVectorParam(computeShader, ComputeUniforms.JitterSizeAndOffset, new Vector4
+			commandBuffer.SetComputeVectorParam(computeShader, ComputeUniforms.JitterSizeAndOffset, new Vector4
 			(
-				(float) context.width / (float) noise.width,
-				(float) context.height / (float) noise.height,
+				(float) width / (float) noise.width,
+				(float) height / (float) noise.height,
 				jitterSample.x,
 				jitterSample.y
 			));
@@ -345,24 +432,24 @@ namespace Trive.Rendering
 			var costMap = ComputeUniforms.CostMap;
 			var costMapDesc = new RenderTextureDescriptor(costMapSize.x, costMapSize.y,RenderTextureFormat.RG16,0);
 
-			context.command.BeginSample("Stochastic Reflection Cost Map");
-			context.command.GetTemporaryRT(costMap,costMapDesc);
-			context.command.BlitFullscreenTriangle(context.source,costMap, sheet, costMapPass);
-			context.command.SetGlobalTexture(Uniforms.CostMap,costMap);
-			context.command.EndSample("Stochastic Reflection Cost Map");
+			commandBuffer.BeginSample("Stochastic Reflection Cost Map");
+			commandBuffer.GetTemporaryRT(costMap,costMapDesc);
+			commandBuffer.BlitFullscreenTriangle(context.source,costMap, sheet, costMapPass);
+			commandBuffer.SetGlobalTexture(Uniforms.CostMap,costMap);
+			commandBuffer.EndSample("Stochastic Reflection Cost Map");
 
 			//var visibilityTex0 = Shader.PropertyToID("DepthPyramid0");
 			var visibilityTex1 = Shader.PropertyToID("DepthPyramid1");
-			var visiblityDesc = new RenderTextureDescriptor(context.width, context.height, RenderTextureFormat.RHalf, 0)
+			var visiblityDesc = new RenderTextureDescriptor(width, height, RenderTextureFormat.RHalf, 0)
 			{
 				useMipMap = true,
 				autoGenerateMips = false
 			};
 
-			context.command.BeginSample("Stochastic Reflection Depth Pyramid");
-			context.command.GetTemporaryRT(visibilityTex1, visiblityDesc, FilterMode.Point);
+			commandBuffer.BeginSample("Stochastic Reflection Depth Pyramid");
+			commandBuffer.GetTemporaryRT(visibilityTex1, visiblityDesc, FilterMode.Point);
 			//copy depth inf first mip level
-			context.command.BlitFullscreenTriangle(BuiltinRenderTextureType.None, visibilityTex1, sheet, copyDepthPass);
+			commandBuffer.BlitFullscreenTriangle(BuiltinRenderTextureType.None, visibilityTex1, sheet, copyDepthPass);
 			var lastDepthPyramid = new RenderTargetIdentifier(visibilityTex1);
 			Vector2Int DepthPyramidSize = new Vector2Int(visiblityDesc.width, visiblityDesc.height);
 			Vector2Int LastDepthPyramidSize = new Vector2Int(visiblityDesc.width, visiblityDesc.height);
@@ -372,24 +459,24 @@ namespace Trive.Rendering
 				DepthPyramidSize.x /= 2;
 				DepthPyramidSize.y /= 2;
 
-				context.command.GetTemporaryRT(depthIds[i], DepthPyramidSize.x, DepthPyramidSize.y, 0, FilterMode.Point, RenderTextureFormat.RHalf, RenderTextureReadWrite.Default, 1, true);
-				context.command.SetComputeTextureParam(depthPyramidShader, 0, ComputeUniforms.Source, lastDepthPyramid);
-				context.command.SetComputeTextureParam(depthPyramidShader, 0, ComputeUniforms.Result, depthIds[i]);
-				context.command.SetComputeVectorParam(depthPyramidShader, ComputeUniforms.Size, new Vector4(1f / DepthPyramidSize.x,1f / DepthPyramidSize.y,1f / LastDepthPyramidSize.x, 1f / LastDepthPyramidSize.y));
-				context.command.DispatchCompute(depthPyramidShader, 0, Mathf.CeilToInt(DepthPyramidSize.x / 8f), Mathf.CeilToInt(DepthPyramidSize.y / 8f), 1);
-				context.command.CopyTexture(depthIds[i], 0, 0, visibilityTex1, 0, i + 1);
+				commandBuffer.GetTemporaryRT(depthIds[i], DepthPyramidSize.x, DepthPyramidSize.y, 0, FilterMode.Point, RenderTextureFormat.RHalf, RenderTextureReadWrite.Default, 1, true);
+				commandBuffer.SetComputeTextureParam(depthPyramidShader, 0, ComputeUniforms.Source, lastDepthPyramid);
+				commandBuffer.SetComputeTextureParam(depthPyramidShader, 0, ComputeUniforms.Result, depthIds[i]);
+				commandBuffer.SetComputeVectorParam(depthPyramidShader, ComputeUniforms.Size, new Vector4(1f / DepthPyramidSize.x,1f / DepthPyramidSize.y,1f / LastDepthPyramidSize.x, 1f / LastDepthPyramidSize.y));
+				commandBuffer.DispatchCompute(depthPyramidShader, 0, Mathf.CeilToInt(DepthPyramidSize.x / 8f), Mathf.CeilToInt(DepthPyramidSize.y / 8f), 1);
+				commandBuffer.CopyTexture(depthIds[i], 0, 0, visibilityTex1, 0, i + 1);
 
 				lastDepthPyramid = depthIds[i];
 				LastDepthPyramidSize = DepthPyramidSize;
 			}
 
 			for (int i = 0; i < MAX_MIN_Z_LEVELS; i++)
-				context.command.ReleaseTemporaryRT(mipIDs[i]);
+				commandBuffer.ReleaseTemporaryRT(mipIDs[i]);
 
-			context.command.SetGlobalTexture(Uniforms.MinDepth, visibilityTex1);
+			commandBuffer.SetGlobalTexture(Uniforms.MinDepth, visibilityTex1);
 
-			//context.command.ReleaseTemporaryRT(visibilityTex0);
-			context.command.EndSample("Stochastic Reflection Depth Pyramid");
+			//commandBuffer.ReleaseTemporaryRT(visibilityTex0);
+			commandBuffer.EndSample("Stochastic Reflection Depth Pyramid");
 
 			switch (settings.debugPass.value)
 			{
@@ -402,23 +489,23 @@ namespace Trive.Rendering
 				case SSRDebugPass.CostMap:
 				case SSRDebugPass.Depth:
 				case SSRDebugPass.Resolve:
-					context.command.BlitFullscreenTriangle(context.source, mainBuffer, sheet, removeCubemapPass);
+					commandBuffer.BlitFullscreenTriangle(context.source, mainBuffer, sheet, removeCubemapPass);
 					break;
 				case SSRDebugPass.Combine:
 					if (Application.isPlaying && settings.multipleBounces && !context.isSceneView)
 					{
-						context.command.BlitFullscreenTriangle(mainBuffer, recursiveTex, sheet, recusrsivePass);
-						context.command.BlitFullscreenTriangle(recursiveTex, mainBuffer);
+						commandBuffer.BlitFullscreenTriangle(mainBuffer, recursiveTex, sheet, recusrsivePass);
+						commandBuffer.BlitFullscreenTriangle(recursiveTex, mainBuffer);
 					}
 					else
 					{
-						context.command.BlitFullscreenTriangle(context.source, mainBuffer);
+						commandBuffer.BlitFullscreenTriangle(context.source, mainBuffer);
 					}
 
 					break;
 			}
 
-			context.command.BeginSample("Stochastic Reflection Raycasting");
+			commandBuffer.BeginSample("Stochastic Reflection Raycasting");
 			var raycastTex = Uniforms.Raycast;
 			var raycastDesc = new RenderTextureDescriptor(raycastSize.x, raycastSize.y, RenderTextureFormat.ARGBHalf, 0)
 			{
@@ -429,20 +516,20 @@ namespace Trive.Rendering
 			{
 				enableRandomWrite = true
 			};
-			context.command.GetTemporaryRT(raycastTex, raycastDesc,FilterMode.Point);
-			context.command.GetTemporaryRT(raycastMaskTex, raycastMaskDesc, FilterMode.Point);
+			commandBuffer.GetTemporaryRT(raycastTex, raycastDesc,FilterMode.Point);
+			commandBuffer.GetTemporaryRT(raycastMaskTex, raycastMaskDesc, FilterMode.Point);
 
-			context.command.SetGlobalTexture(Uniforms.Raycast, raycastTex);
-			context.command.SetGlobalTexture(Uniforms.RaycastMask, raycastMaskTex);
+			commandBuffer.SetGlobalTexture(Uniforms.Raycast, raycastTex);
+			commandBuffer.SetGlobalTexture(Uniforms.RaycastMask, raycastMaskTex);
 
-			context.command.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.MinDepth, visibilityTex1);
-			context.command.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.CostMap, costMap);
-			context.command.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.CameraGBufferTexture1, BuiltinRenderTextureType.GBuffer1);
-			context.command.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.CameraGBufferTexture2, BuiltinRenderTextureType.GBuffer2);
-			context.command.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.MaskResult, raycastMaskTex);
-			context.command.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.RaycastResult, raycastTex);
-			context.command.DispatchCompute(computeShader, raycastKernel, Mathf.CeilToInt((float)raycastSize.x / KERNEL_SIZE),Mathf.CeilToInt((float)raycastSize.y / KERNEL_SIZE), 1);
-			context.command.EndSample("Stochastic Reflection Raycasting");
+			commandBuffer.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.MinDepth, visibilityTex1);
+			commandBuffer.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.CostMap, costMap);
+			commandBuffer.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.CameraGBufferTexture1, BuiltinRenderTextureType.GBuffer1);
+			commandBuffer.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.CameraGBufferTexture2, BuiltinRenderTextureType.GBuffer2);
+			commandBuffer.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.MaskResult, raycastMaskTex);
+			commandBuffer.SetComputeTextureParam(computeShader, raycastKernel, ComputeUniforms.RaycastResult, raycastTex);
+			commandBuffer.DispatchCompute(computeShader, raycastKernel, Mathf.CeilToInt((float)raycastSize.x / KERNEL_SIZE),Mathf.CeilToInt((float)raycastSize.y / KERNEL_SIZE), 1);
+			commandBuffer.EndSample("Stochastic Reflection Raycasting");
 
 			const int kMaxLods = 12;
 			int lodCount = Mathf.FloorToInt(Mathf.Log(mainBuffer.width, 2f) - 3f);
@@ -450,7 +537,7 @@ namespace Trive.Rendering
 
 			if (settings.useMipMap)
 			{
-				context.command.BeginSample("Stochastic Reflection Color Pyramid");
+				commandBuffer.BeginSample("Stochastic Reflection Color Pyramid");
 				var compute = context.resources.computeShaders.gaussianDownsample;
 				int kernel = compute.FindKernel("KMain");
 
@@ -462,24 +549,24 @@ namespace Trive.Rendering
 					mipSize.x >>= 1;
 					mipSize.y >>= 1;
 
-					context.command.GetTemporaryRT(mipIDs[i], mipSize.x, mipSize.y, 0, FilterMode.Bilinear, context.sourceFormat, RenderTextureReadWrite.Default, 1, true);
-					context.command.SetComputeTextureParam(compute, kernel, ComputeUniforms.Source, last);
-					context.command.SetComputeTextureParam(compute, kernel, ComputeUniforms.Result, mipIDs[i]);
-					context.command.SetComputeVectorParam(compute,ComputeUniforms.Size, new Vector4(mipSize.x, mipSize.y, 1f / mipSize.x, 1f / mipSize.y));
-					context.command.DispatchCompute(compute, kernel, Mathf.CeilToInt(mipSize.x / 8f), Mathf.CeilToInt(mipSize.y / 8f), 1);
-					context.command.CopyTexture(mipIDs[i], 0, 0, mainBuffer, 0, i + 1);
+					commandBuffer.GetTemporaryRT(mipIDs[i], mipSize.x, mipSize.y, 0, FilterMode.Bilinear, context.sourceFormat, RenderTextureReadWrite.Default, 1, true);
+					commandBuffer.SetComputeTextureParam(compute, kernel, ComputeUniforms.Source, last);
+					commandBuffer.SetComputeTextureParam(compute, kernel, ComputeUniforms.Result, mipIDs[i]);
+					commandBuffer.SetComputeVectorParam(compute,ComputeUniforms.Size, new Vector4(mipSize.x, mipSize.y, 1f / mipSize.x, 1f / mipSize.y));
+					commandBuffer.DispatchCompute(compute, kernel, Mathf.CeilToInt(mipSize.x / 8f), Mathf.CeilToInt(mipSize.y / 8f), 1);
+					commandBuffer.CopyTexture(mipIDs[i], 0, 0, mainBuffer, 0, i + 1);
 
 					last = mipIDs[i];
 				}
 
 				for (int i = 0; i < lodCount; i++)
-					context.command.ReleaseTemporaryRT(mipIDs[i]);
+					commandBuffer.ReleaseTemporaryRT(mipIDs[i]);
 
 
-				context.command.EndSample("Stochastic Reflection Color Pyramid");
+				commandBuffer.EndSample("Stochastic Reflection Color Pyramid");
 			}
 
-			context.command.BeginSample("Stochastic Reflection Resolve");
+			commandBuffer.BeginSample("Stochastic Reflection Resolve");
 
 			//resolve
 			var resolvePassTex = ComputeUniforms.ResolveResult;
@@ -487,64 +574,64 @@ namespace Trive.Rendering
 			{
 				enableRandomWrite = true
 			};
-			context.command.GetTemporaryRT(resolvePassTex, resolveTexDesc);
-			context.command.SetGlobalTexture(Uniforms.ReflectionBuffer, resolvePassTex);
+			commandBuffer.GetTemporaryRT(resolvePassTex, resolveTexDesc);
+			commandBuffer.SetGlobalTexture(Uniforms.ReflectionBuffer, resolvePassTex);
 
-			context.command.SetComputeIntParam(computeShader, ComputeUniforms.MaxMipMap, settings.useMipMap ? lodCount : 1);
-			context.command.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.CameraGBufferTexture1, BuiltinRenderTextureType.GBuffer1);
-			context.command.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.CameraGBufferTexture2, BuiltinRenderTextureType.GBuffer2);
-			context.command.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.CameraMotionVectorsTexture, BuiltinRenderTextureType.MotionVectors);
-			context.command.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.MinDepth, visibilityTex1);
-			context.command.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.ResolveResult, resolvePassTex);
-			context.command.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.ScreenInput, mainBuffer);
-			context.command.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.RaycastInput, raycastTex);
-			context.command.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.MaskInput, raycastMaskTex);
-			context.command.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.CostMap, costMap);
-			context.command.DispatchCompute(computeShader, resolveKernel, Mathf.CeilToInt((float)resolveSize.x / KERNEL_SIZE), Mathf.CeilToInt((float)resolveSize.y / KERNEL_SIZE), 1);
+			commandBuffer.SetComputeIntParam(computeShader, ComputeUniforms.MaxMipMap, settings.useMipMap ? lodCount : 1);
+			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.CameraGBufferTexture1, BuiltinRenderTextureType.GBuffer1);
+			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.CameraGBufferTexture2, BuiltinRenderTextureType.GBuffer2);
+			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.CameraMotionVectorsTexture, BuiltinRenderTextureType.MotionVectors);
+			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.MinDepth, visibilityTex1);
+			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.ResolveResult, resolvePassTex);
+			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.ScreenInput, mainBuffer);
+			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.RaycastInput, raycastTex);
+			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.MaskInput, raycastMaskTex);
+			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.CostMap, costMap);
+			commandBuffer.DispatchCompute(computeShader, resolveKernel, Mathf.CeilToInt((float)resolveSize.x / KERNEL_SIZE), Mathf.CeilToInt((float)resolveSize.y / KERNEL_SIZE), 1);
 
-			context.command.EndSample("Stochastic Reflection Resolve");
+			commandBuffer.EndSample("Stochastic Reflection Resolve");
 
 			var finalResolve = new RenderTargetIdentifier(resolvePassTex);
 
 			if (settings.useTemporal && !context.isSceneView)
 			{
-				context.command.BeginSample("Stochastic Reflection Temporal");
+				commandBuffer.BeginSample("Stochastic Reflection Temporal");
 
 				var temporalBuffer0 = ComputeUniforms.TemporalBuffet0;
 				var temporalBufferDesc = new RenderTextureDescriptor(resolveSize.x, resolveSize.y, RenderTextureFormat.DefaultHDR, 0) {enableRandomWrite = true};
-				context.command.GetTemporaryRT(temporalBuffer0, temporalBufferDesc);
+				commandBuffer.GetTemporaryRT(temporalBuffer0, temporalBufferDesc);
 
-				context.command.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.MinDepth, visibilityTex1);
-				context.command.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.RaycastInput, raycastTex);
-				context.command.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.MaskInput, raycastMaskTex);
-				context.command.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.PreviousTemporalInput, temporalBuffer);
-				context.command.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.ScreenInput, resolvePassTex);
-				context.command.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.CameraMotionVectorsTexture, BuiltinRenderTextureType.MotionVectors);
-				context.command.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.CameraDepthTexture, BuiltinRenderTextureType.ResolvedDepth);
+				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.MinDepth, visibilityTex1);
+				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.RaycastInput, raycastTex);
+				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.MaskInput, raycastMaskTex);
+				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.PreviousTemporalInput, temporalBuffer);
+				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.ScreenInput, resolvePassTex);
+				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.CameraMotionVectorsTexture, BuiltinRenderTextureType.MotionVectors);
+				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.CameraDepthTexture, BuiltinRenderTextureType.ResolvedDepth);
 
-				context.command.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.TemporalResult, temporalBuffer0);
-				context.command.DispatchCompute(computeShader, temporalKernel, Mathf.CeilToInt((float)resolveSize.x / KERNEL_SIZE), Mathf.CeilToInt((float)resolveSize.y / KERNEL_SIZE), 1);
+				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.TemporalResult, temporalBuffer0);
+				commandBuffer.DispatchCompute(computeShader, temporalKernel, Mathf.CeilToInt((float)resolveSize.x / KERNEL_SIZE), Mathf.CeilToInt((float)resolveSize.y / KERNEL_SIZE), 1);
 
-				context.command.Blit(temporalBuffer0, temporalBuffer);
-				context.command.ReleaseTemporaryRT(temporalBuffer0);
+				commandBuffer.Blit(temporalBuffer0, temporalBuffer);
+				commandBuffer.ReleaseTemporaryRT(temporalBuffer0);
 
-				context.command.SetGlobalTexture(Uniforms.ReflectionBuffer, temporalBuffer);
+				commandBuffer.SetGlobalTexture(Uniforms.ReflectionBuffer, temporalBuffer);
 				finalResolve = temporalBuffer;
 
-				context.command.EndSample("Stochastic Reflection Temporal");
+				commandBuffer.EndSample("Stochastic Reflection Temporal");
 			}
 
-			context.command.BeginSample("Stochastic Reflection Blur");
+			commandBuffer.BeginSample("Stochastic Reflection Blur");
 
 			if (settings.blurring)
 			{
-				context.command.SetComputeTextureParam(blurShader, settings.highQualityBlur ? 1 : 0, ComputeUniforms.BlurResult, finalResolve);
-				context.command.DispatchCompute(blurShader, settings.highQualityBlur ? 1 : 0, Mathf.CeilToInt((float)resolveSize.x / KERNEL_SIZE), Mathf.CeilToInt((float)resolveSize.y / KERNEL_SIZE), 1);
+				commandBuffer.SetComputeTextureParam(blurShader, settings.highQualityBlur ? 1 : 0, ComputeUniforms.BlurResult, finalResolve);
+				commandBuffer.DispatchCompute(blurShader, settings.highQualityBlur ? 1 : 0, Mathf.CeilToInt((float)resolveSize.x / KERNEL_SIZE), Mathf.CeilToInt((float)resolveSize.y / KERNEL_SIZE), 1);
 			}
 
-			context.command.EndSample("Stochastic Reflection Blur");
+			commandBuffer.EndSample("Stochastic Reflection Blur");
 
-			context.command.BeginSample("Stochastic Reflection Combine");
+			commandBuffer.BeginSample("Stochastic Reflection Combine");
 
 			switch (settings.debugPass.value)
 			{
@@ -557,31 +644,29 @@ namespace Trive.Rendering
 				case SSRDebugPass.CostMap:
 				case SSRDebugPass.Depth:
 				case SSRDebugPass.Resolve:
-					context.command.BlitFullscreenTriangle(context.source, context.destination, sheet, combinePass);
+					commandBuffer.BlitFullscreenTriangle(context.source, context.destination, sheet, combinePass);
 					break;
 				case SSRDebugPass.Combine:
 					if (Application.isPlaying && settings.multipleBounces && !context.isSceneView)
 					{
-						context.command.BlitFullscreenTriangle(context.source, mainBuffer, sheet, combinePass);
-						context.command.BlitFullscreenTriangle(mainBuffer, context.destination);
+						commandBuffer.BlitFullscreenTriangle(context.source, mainBuffer, sheet, combinePass);
+						commandBuffer.BlitFullscreenTriangle(mainBuffer, context.destination);
 					}
 					else
-						context.command.BlitFullscreenTriangle(context.source, context.destination, sheet, combinePass);
+						commandBuffer.BlitFullscreenTriangle(context.source, context.destination, sheet, combinePass);
 
 					break;
 			}
 
-			context.command.EndSample("Stochastic Reflection Combine");
+			commandBuffer.EndSample("Stochastic Reflection Combine");
 
-			context.command.ReleaseTemporaryRT(resolvePassTex);
-			context.command.ReleaseTemporaryRT(raycastTex);
-			context.command.ReleaseTemporaryRT(raycastMaskTex);
-			context.command.ReleaseTemporaryRT(visibilityTex1);
-			context.command.ReleaseTemporaryRT(costMap);
+			commandBuffer.ReleaseTemporaryRT(resolvePassTex);
+			commandBuffer.ReleaseTemporaryRT(raycastTex);
+			commandBuffer.ReleaseTemporaryRT(raycastMaskTex);
+			commandBuffer.ReleaseTemporaryRT(visibilityTex1);
+			commandBuffer.ReleaseTemporaryRT(costMap);
 
-			prevViewProjectionMatrix = viewProjectionMatrix;
-
-			context.command.EndSample("Stochastic Reflection");
+			commandBuffer.EndSample("Stochastic Reflection");
 		}
 
 		// From Unity TAA
