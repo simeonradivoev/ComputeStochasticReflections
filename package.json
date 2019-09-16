@@ -21,5 +21,6 @@
 		"name": "Simeon Radivoev",
 		"email": "simeonradivoev@gmail.com",
 		"url": "https://simeonradivoev.com"
-  }
+	},
+	"publishConfig": { "registry": "https://npm.pkg.github.com/@simeonradivoev" }
 }
