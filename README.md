@@ -31,7 +31,23 @@ Should be mostly production ready, except for a few Hierarchical Z-depth casting
 * Tested with Unity 2018.2
 
 # Installation
-It should work anywhere inside the assets folder but it is recommended putting it in the `Packages` folder.
+In a unity project go to your `Packages` folder. Open `manifest.json` and add into the dependencies the following line: 
+
+```
+"com.simeonradivoev.stochastic-reflections": "https://github.com/simeonradivoev/ComputeStochasticReflections.git"
+```
+
+It should look something like this:
+
+```
+{
+    "dependencies": {
+        "com.unity.ugui": "1.0.0",
+        "com.unity.modules.ui": "1.0.0",
+        "com.simeonradivoev.stochastic-reflections": "https://github.com/simeonradivoev/ComputeStochasticReflections.git",
+    } 
+}
+```
 
 # Usage
 Just add a new effect in a post processing profile under `Custom/Stochastic Screen Space Reflections`
