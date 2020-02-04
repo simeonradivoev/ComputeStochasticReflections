@@ -52,9 +52,9 @@ namespace Trive.Rendering
 		public override bool IsEnabledAndSupported(PostProcessRenderContext context)
 		{
 			return enabled
-				   && intensity.value > 0
-				   && rayDistance.value > 0 
-			       && screenFadeSize.value < 1 
+			       && intensity.value > 0
+			       && rayDistance.value > 0
+			       && screenFadeSize.value < 1
 			       && context.camera.actualRenderingPath == RenderingPath.DeferredShading
 			       && SystemInfo.supportsMotionVectors
 			       && SystemInfo.supportsComputeShaders
@@ -158,9 +158,9 @@ namespace Trive.Rendering
 			public static int MinDepth = Shader.PropertyToID("_MinDepth");
 		}
 
-		private RenderTexture recursiveTex;
-		private RenderTexture mainBuffer;
-		private RenderTexture temporalBuffer;
+		private RenderTexture[] recursiveTexs = new RenderTexture[2];
+		private RenderTexture[] mainBuffers = new RenderTexture[2];
+		private RenderTexture[] temporalBuffers = new RenderTexture[2];
 		private Matrix4x4 prevViewProjectionMatrix;
 		private readonly Matrix4x4[] prevViewProjectionMatrixStereo = new Matrix4x4[2];
 		private ComputeShader computeShader;
@@ -178,6 +178,11 @@ namespace Trive.Rendering
 		private int temporalKernel;
 		private int[] mipIDs;
 		private int[] depthIds;
+
+		public override DepthTextureMode GetCameraFlags()
+		{
+			return DepthTextureMode.DepthNormals | DepthTextureMode.MotionVectors;
+		}
 
 		public override void Init()
 		{
@@ -345,43 +350,54 @@ namespace Trive.Rendering
 
 		private void CreateTextures(PostProcessRenderContext context)
 		{
-			if (recursiveTex == null || context.width != recursiveTex.width || context.height != recursiveTex.height)
+			if (recursiveTexs[context.xrActiveEye] == null || context.width != recursiveTexs[context.xrActiveEye].width || context.height != recursiveTexs[context.xrActiveEye].height)
 			{
-				if (recursiveTex != null) Object.DestroyImmediate(recursiveTex);
-				recursiveTex = new RenderTexture(context.width, context.height, 0, RenderTextureFormat.DefaultHDR);
-				recursiveTex.Create();
+				if (recursiveTexs[context.xrActiveEye] != null) Object.DestroyImmediate(recursiveTexs[context.xrActiveEye]);
+				recursiveTexs[context.xrActiveEye] = new RenderTexture(context.width, context.height, 0, RenderTextureFormat.DefaultHDR);
+				recursiveTexs[context.xrActiveEye].Create();
 			}
 
 			int powerOfTwoSize = Mathf.ClosestPowerOfTwo(Mathf.Min(context.width, context.height));
-			if (mainBuffer == null || mainBuffer.width != context.width || mainBuffer.height != context.height)
+			if (mainBuffers[context.xrActiveEye] == null || mainBuffers[context.xrActiveEye].width != context.width || mainBuffers[context.xrActiveEye].height != context.height)
 			{
-				if (mainBuffer != null) Object.DestroyImmediate(mainBuffer);
-				mainBuffer = new RenderTexture(context.width, context.height, 0, RenderTextureFormat.DefaultHDR)
+				if (mainBuffers[context.xrActiveEye] != null) Object.DestroyImmediate(mainBuffers[context.xrActiveEye]);
+				mainBuffers[context.xrActiveEye] = new RenderTexture(context.width, context.height, 0, RenderTextureFormat.DefaultHDR)
 				{
 					useMipMap = true,
 					autoGenerateMips = false
 				};
-				mainBuffer.Create();
+				mainBuffers[context.xrActiveEye].Create();
 			}
-			Vector2Int resolveSize = new Vector2Int(context.width,context.height);
+			Vector2Int resolveSize = new Vector2Int(context.width, context.height);
 			if (settings.resolveDownsample)
 			{
 				resolveSize.x /= 2;
 				resolveSize.y /= 2;
 			}
-			if (temporalBuffer == null || temporalBuffer.width != resolveSize.x || temporalBuffer.height != resolveSize.y)
+
+			if (temporalBuffers[context.xrActiveEye] == null || temporalBuffers[context.xrActiveEye].width != resolveSize.x || temporalBuffers[context.xrActiveEye].height != resolveSize.y)
 			{
-				if (temporalBuffer != null) Object.DestroyImmediate(temporalBuffer);
-				temporalBuffer = new RenderTexture(new RenderTextureDescriptor(resolveSize.x, resolveSize.y, RenderTextureFormat.DefaultHDR, 0) {enableRandomWrite = true});
-				temporalBuffer.Create();
+				if (temporalBuffers[context.xrActiveEye] != null) Object.DestroyImmediate(temporalBuffers[context.xrActiveEye]);
+				temporalBuffers[context.xrActiveEye] = new RenderTexture(new RenderTextureDescriptor(resolveSize.x, resolveSize.y, RenderTextureFormat.DefaultHDR, 0) { enableRandomWrite = true });
+				temporalBuffers[context.xrActiveEye].Create();
 			}
 		}
 
 		private void CleanTextures()
 		{
-			if (recursiveTex != null) Object.DestroyImmediate(recursiveTex);
-			if (mainBuffer != null) Object.DestroyImmediate(mainBuffer);
-			if (temporalBuffer != null) Object.DestroyImmediate(temporalBuffer);
+			foreach (var recursiveTex in recursiveTexs)
+			{
+				if (recursiveTex != null) Object.DestroyImmediate(recursiveTex);
+			}
+
+			foreach (var mainBuffer in mainBuffers)
+			{
+				if (mainBuffer != null) Object.DestroyImmediate(mainBuffer);
+			}
+			foreach (var temporalBuffer in temporalBuffers)
+			{
+				if (temporalBuffer != null) Object.DestroyImmediate(temporalBuffer);
+			}
 		}
 
 		public override void Render(PostProcessRenderContext context)
@@ -489,17 +505,17 @@ namespace Trive.Rendering
 				case SSRDebugPass.CostMap:
 				case SSRDebugPass.Depth:
 				case SSRDebugPass.Resolve:
-					commandBuffer.BlitFullscreenTriangle(context.source, mainBuffer, sheet, removeCubemapPass);
+					commandBuffer.BlitFullscreenTriangle(context.source, mainBuffers[context.xrActiveEye], sheet, removeCubemapPass);
 					break;
 				case SSRDebugPass.Combine:
 					if (Application.isPlaying && settings.multipleBounces && !context.isSceneView)
 					{
-						commandBuffer.BlitFullscreenTriangle(mainBuffer, recursiveTex, sheet, recusrsivePass);
-						commandBuffer.BlitFullscreenTriangle(recursiveTex, mainBuffer);
+						commandBuffer.BlitFullscreenTriangle(mainBuffers[context.xrActiveEye], recursiveTexs[context.xrActiveEye], sheet, recusrsivePass);
+						commandBuffer.BlitFullscreenTriangle(recursiveTexs[context.xrActiveEye], mainBuffers[context.xrActiveEye]);
 					}
 					else
 					{
-						commandBuffer.BlitFullscreenTriangle(context.source, mainBuffer);
+						commandBuffer.BlitFullscreenTriangle(context.source, mainBuffers[context.xrActiveEye]);
 					}
 
 					break;
@@ -532,7 +548,7 @@ namespace Trive.Rendering
 			commandBuffer.EndSample("Stochastic Reflection Raycasting");
 
 			const int kMaxLods = 12;
-			int lodCount = Mathf.FloorToInt(Mathf.Log(mainBuffer.width, 2f) - 3f);
+			int lodCount = Mathf.FloorToInt(Mathf.Log(mainBuffers[context.xrActiveEye].width, 2f) - 3f);
 			lodCount = Mathf.Min(lodCount, kMaxLods);
 
 			if (settings.useMipMap)
@@ -541,8 +557,8 @@ namespace Trive.Rendering
 				var compute = context.resources.computeShaders.gaussianDownsample;
 				int kernel = compute.FindKernel("KMain");
 
-				var last = new RenderTargetIdentifier(mainBuffer);
-				Vector2Int mipSize = new Vector2Int(mainBuffer.width, mainBuffer.height);
+				var last = new RenderTargetIdentifier(mainBuffers[context.xrActiveEye]);
+				Vector2Int mipSize = new Vector2Int(mainBuffers[context.xrActiveEye].width, mainBuffers[context.xrActiveEye].height);
 
 				for (int i = 0; i < lodCount; i++)
 				{
@@ -554,7 +570,7 @@ namespace Trive.Rendering
 					commandBuffer.SetComputeTextureParam(compute, kernel, ComputeUniforms.Result, mipIDs[i]);
 					commandBuffer.SetComputeVectorParam(compute,ComputeUniforms.Size, new Vector4(mipSize.x, mipSize.y, 1f / mipSize.x, 1f / mipSize.y));
 					commandBuffer.DispatchCompute(compute, kernel, Mathf.CeilToInt(mipSize.x / 8f), Mathf.CeilToInt(mipSize.y / 8f), 1);
-					commandBuffer.CopyTexture(mipIDs[i], 0, 0, mainBuffer, 0, i + 1);
+					commandBuffer.CopyTexture(mipIDs[i], 0, 0, mainBuffers[context.xrActiveEye], 0, i + 1);
 
 					last = mipIDs[i];
 				}
@@ -583,7 +599,7 @@ namespace Trive.Rendering
 			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.CameraMotionVectorsTexture, BuiltinRenderTextureType.MotionVectors);
 			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.MinDepth, visibilityTex1);
 			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.ResolveResult, resolvePassTex);
-			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.ScreenInput, mainBuffer);
+			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.ScreenInput, mainBuffers[context.xrActiveEye]);
 			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.RaycastInput, raycastTex);
 			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.MaskInput, raycastMaskTex);
 			commandBuffer.SetComputeTextureParam(computeShader, resolveKernel, ComputeUniforms.CostMap, costMap);
@@ -604,7 +620,7 @@ namespace Trive.Rendering
 				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.MinDepth, visibilityTex1);
 				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.RaycastInput, raycastTex);
 				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.MaskInput, raycastMaskTex);
-				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.PreviousTemporalInput, temporalBuffer);
+				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.PreviousTemporalInput, temporalBuffers[context.xrActiveEye]);
 				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.ScreenInput, resolvePassTex);
 				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.CameraMotionVectorsTexture, BuiltinRenderTextureType.MotionVectors);
 				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.CameraDepthTexture, BuiltinRenderTextureType.ResolvedDepth);
@@ -612,11 +628,11 @@ namespace Trive.Rendering
 				commandBuffer.SetComputeTextureParam(computeShader, temporalKernel, ComputeUniforms.TemporalResult, temporalBuffer0);
 				commandBuffer.DispatchCompute(computeShader, temporalKernel, Mathf.CeilToInt((float)resolveSize.x / KERNEL_SIZE), Mathf.CeilToInt((float)resolveSize.y / KERNEL_SIZE), 1);
 
-				commandBuffer.Blit(temporalBuffer0, temporalBuffer);
+				commandBuffer.CopyTexture(temporalBuffer0, temporalBuffers[context.xrActiveEye]);
 				commandBuffer.ReleaseTemporaryRT(temporalBuffer0);
 
-				commandBuffer.SetGlobalTexture(Uniforms.ReflectionBuffer, temporalBuffer);
-				finalResolve = temporalBuffer;
+				commandBuffer.SetGlobalTexture(Uniforms.ReflectionBuffer, temporalBuffers[context.xrActiveEye]);
+				finalResolve = temporalBuffers[context.xrActiveEye];
 
 				commandBuffer.EndSample("Stochastic Reflection Temporal");
 			}
@@ -649,8 +665,8 @@ namespace Trive.Rendering
 				case SSRDebugPass.Combine:
 					if (Application.isPlaying && settings.multipleBounces && !context.isSceneView)
 					{
-						commandBuffer.BlitFullscreenTriangle(context.source, mainBuffer, sheet, combinePass);
-						commandBuffer.BlitFullscreenTriangle(mainBuffer, context.destination);
+						commandBuffer.BlitFullscreenTriangle(context.source, mainBuffers[context.xrActiveEye], sheet, combinePass);
+						commandBuffer.BlitFullscreenTriangle(mainBuffers[context.xrActiveEye], context.destination);
 					}
 					else
 						commandBuffer.BlitFullscreenTriangle(context.source, context.destination, sheet, combinePass);
