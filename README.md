@@ -51,6 +51,7 @@ It should look something like this:
 
 # Usage
 Just add a new effect in a post processing profile under `Custom/Stochastic Screen Space Reflections`
+For VR use the test branch called `StereoRendering`. It currently only supports multi pass rendering.
 
 # References
 * Rewritten from [Xerxes1138](https://github.com/Xerxes1138/StochasticScreenSpaceReflection)
