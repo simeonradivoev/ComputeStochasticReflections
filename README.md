@@ -1,4 +1,7 @@
 # Compute Stochastic Screen Space Reflections
+
+[![openupm](https://img.shields.io/npm/v/com.simeonradivoev.stochastic-reflections?label=openupm&registry_uri=https://package.openupm.com)](https://openupm.com/packages/com.simeonradivoev.stochastic-reflections/)
+
 Compute Stochastic Screen Space Reflections for Unity post processing. Utilizing shared memory for performance.
 Should be mostly production ready, except for a few Hierarchical Z-depth casting artifacts.
 
@@ -31,6 +34,16 @@ Should be mostly production ready, except for a few Hierarchical Z-depth casting
 * Tested with Unity 2018.2
 
 # Installation
+
+## Install via OpenUPM
+
+The package is available on the [openupm registry](https://openupm.com). It's recommended to install it via [openupm-cli](https://github.com/openupm/openupm-cli).
+
+```
+openupm add com.simeonradivoev.stochastic-reflections
+```
+
+## Install via Git URL
 In a unity project go to your `Packages` folder. Open `manifest.json` and add into the dependencies the following line: 
 
 ```
