@@ -384,7 +384,7 @@ namespace Trive.Rendering
 			}
 
 			for (int i = 0; i < MAX_MIN_Z_LEVELS; i++)
-				context.command.ReleaseTemporaryRT(mipIDs[i]);
+				context.command.ReleaseTemporaryRT(depthIds[i]);
 
 			context.command.SetGlobalTexture(Uniforms.MinDepth, visibilityTex1);
 
