@@ -66,11 +66,11 @@ For VR use the test branch called `StereoRendering`. It currently only supports 
 
 # Screenshots
 
-![](https://simeonradivoev.com/storage/app/media/gallery/Compute%20Stochastic%20SSR/5d67d3569f8bc768178482.png)
-![](https://simeonradivoev.com/storage/app/media/gallery/Compute%20Stochastic%20SSR/5d67d343dc5fa255333529.png)
+![](https://simeonradivoev.com/assets/img/sOaJn-um7v-1371.png)
+![](https://simeonradivoev.com/assets/img/eg_SptG5HM-1375.png)
 
 # Before and After
-![Before](https://simeonradivoev.com/storage/app/media/gallery/Compute%20Stochastic%20SSR/5d67d35d8e035110107870.png) ![After](https://simeonradivoev.com/storage/app/media/gallery/Compute%20Stochastic%20SSR/5d67d35ab7ae3776349940.png)
+![Before](https://simeonradivoev.com/assets/img/ZV3xQ7PYAB-1373.png) ![After](https://simeonradivoev.com/assets/img/2OiSyBw8dJ-1373.png)
 
 # Performance
 Tested on a GTX 1070 at 1080p
