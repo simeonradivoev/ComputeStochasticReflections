@@ -2,6 +2,9 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.PostProcessing;
+using BoolParameter = UnityEngine.Rendering.PostProcessing.BoolParameter;
+using FloatParameter = UnityEngine.Rendering.PostProcessing.FloatParameter;
+using IntParameter = UnityEngine.Rendering.PostProcessing.IntParameter;
 using Object = UnityEngine.Object;
 
 namespace Trive.Rendering

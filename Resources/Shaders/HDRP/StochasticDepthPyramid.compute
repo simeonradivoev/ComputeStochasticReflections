@@ -1,0 +1,64 @@
+#pragma kernel CSCopyDepth
+#pragma kernel CSDownsample
+
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+
+Texture2DArray<float> _SRDepthTexture;
+Texture2D<float> _SRDepthPyramid;
+SamplerState sampler_point_clamp;
+
+RWTexture2D<float> _SRDepthDestination;
+
+float4 _SRDepthSize; // 1 / destination size in xy, 1 / source size in zw
+int _SRSourceMip;
+int _SRSliceIndex;
+
+[numthreads(8, 8, 1)]
+void CSCopyDepth(uint3 id : SV_DispatchThreadID)
+{
+	float2 uv = (id.xy + 0.5) * _SRDepthSize.xy;
+
+	_SRDepthDestination[id.xy] = _SRDepthTexture.SampleLevel(sampler_point_clamp, float3(uv, (float)_SRSliceIndex), 0.0);
+}
+
+// Builds the nearest depth of every 2x2 (plus neighbours) tile. The ray marcher advances a ray only
+// while the ray is in front of the nearest surface of the tile, so the pyramid has to keep the
+// closest surface: with reversed Z the closest surface is the largest raw depth.
+[numthreads(8, 8, 1)]
+void CSDownsample(uint3 id : SV_DispatchThreadID)
+{
+	float2 uv = (id.xy + 0.5) * _SRDepthSize.xy;
+	float2 o = _SRDepthSize.zw;
+
+	float fineZ = _SRDepthPyramid.SampleLevel(sampler_point_clamp, uv, _SRSourceMip);
+	float fineZ1 = _SRDepthPyramid.SampleLevel(sampler_point_clamp, uv + float2( 1,  0) * o, _SRSourceMip);
+	float fineZ2 = _SRDepthPyramid.SampleLevel(sampler_point_clamp, uv + float2(-1,  0) * o, _SRSourceMip);
+	float fineZ3 = _SRDepthPyramid.SampleLevel(sampler_point_clamp, uv + float2( 0,  1) * o, _SRSourceMip);
+	float fineZ4 = _SRDepthPyramid.SampleLevel(sampler_point_clamp, uv + float2( 0, -1) * o, _SRSourceMip);
+	float fineZ5 = _SRDepthPyramid.SampleLevel(sampler_point_clamp, uv + float2( 1,  1) * o, _SRSourceMip);
+	float fineZ6 = _SRDepthPyramid.SampleLevel(sampler_point_clamp, uv + float2(-1,  1) * o, _SRSourceMip);
+	float fineZ7 = _SRDepthPyramid.SampleLevel(sampler_point_clamp, uv + float2( 1, -1) * o, _SRSourceMip);
+	float fineZ8 = _SRDepthPyramid.SampleLevel(sampler_point_clamp, uv + float2(-1, -1) * o, _SRSourceMip);
+
+#if UNITY_REVERSED_Z
+	fineZ = max(fineZ, fineZ1);
+	fineZ = max(fineZ, fineZ2);
+	fineZ = max(fineZ, fineZ3);
+	fineZ = max(fineZ, fineZ4);
+	fineZ = max(fineZ, fineZ5);
+	fineZ = max(fineZ, fineZ6);
+	fineZ = max(fineZ, fineZ7);
+	fineZ = max(fineZ, fineZ8);
+#else
+	fineZ = min(fineZ, fineZ1);
+	fineZ = min(fineZ, fineZ2);
+	fineZ = min(fineZ, fineZ3);
+	fineZ = min(fineZ, fineZ4);
+	fineZ = min(fineZ, fineZ5);
+	fineZ = min(fineZ, fineZ6);
+	fineZ = min(fineZ, fineZ7);
+	fineZ = min(fineZ, fineZ8);
+#endif
+
+	_SRDepthDestination[id.xy] = fineZ;
+}

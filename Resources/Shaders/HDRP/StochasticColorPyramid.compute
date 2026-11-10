@@ -1,0 +1,27 @@
+#pragma kernel CSMain
+
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+
+Texture2D<half4> _SRColorSource;
+SamplerState sampler_linear_clamp;
+RWTexture2D<half4> _SRColorDestination;
+
+float4 _SRColorSize; // 1 / destination size in xy, 1 / source size in zw
+int _SRColorSourceMip;
+
+// 4 tap box filter. Each tap is a bilinear sample placed half a source texel away from the
+// destination texel center, which averages the full 2x2 block.
+[numthreads(8, 8, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	float2 uv = (id.xy + 0.5) * _SRColorSize.xy;
+	float2 t = _SRColorSize.zw * 0.5;
+
+	half4 color = 0;
+	color += _SRColorSource.SampleLevel(sampler_linear_clamp, uv + float2(-t.x, -t.y), _SRColorSourceMip);
+	color += _SRColorSource.SampleLevel(sampler_linear_clamp, uv + float2( t.x, -t.y), _SRColorSourceMip);
+	color += _SRColorSource.SampleLevel(sampler_linear_clamp, uv + float2(-t.x,  t.y), _SRColorSourceMip);
+	color += _SRColorSource.SampleLevel(sampler_linear_clamp, uv + float2( t.x,  t.y), _SRColorSourceMip);
+
+	_SRColorDestination[id.xy] = color * 0.25;
+}

@@ -1,5 +1,9 @@
+#ifndef PI
 #define PI            3.14159265359f
+#endif
+#ifndef INV_PI
 #define INV_PI        0.31830988618f
+#endif
 
 half SmithJointGGXVisibilityTerm(half NdotL, half NdotV, half roughness)
 {

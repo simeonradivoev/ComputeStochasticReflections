@@ -1,26 +1,28 @@
 {
-    "category": "PostProcessing/StochasticReflections", 
-    "description": "Compute Stochastic Screen Space Reflections", 
+    "category": "PostProcessing/StochasticReflections",
+    "description": "Compute Stochastic Screen Space Reflections",
     "keywords": [
-        "post-processing", 
+        "post-processing",
         "image-effects",
-		"reflections"
-    ], 
+        "reflections"
+    ],
     "name": "com.simeonradivoev.stochastic-reflections",
-	"displayName": "Stochastic Screen Space Reflections",
+    "displayName": "Stochastic Screen Space Reflections",
     "repository": {
-        "type": "git", 
+        "type": "git",
         "url": "git@github.com:simeonradivoev/ComputeStochasticReflections.git"
-    }, 
-    "unity": "2018.2", 
-    "version": "1.0.1",
-	"dependencies": {
-		"com.unity.postprocessing": "2.1.7"
     },
-	"author": {
-		"name": "Simeon Radivoev",
-		"email": "simeonradivoev@gmail.com",
-		"url": "https://simeonradivoev.com"
-	},
-	"publishConfig": { "registry": "https://npm.pkg.github.com/@simeonradivoev" }
+    "unity": "6000.0",
+    "version": "2.0.0",
+    "dependencies": {
+        "com.unity.postprocessing": "3.4.0",
+        "com.unity.render-pipelines.core": "17.5.0",
+        "com.unity.render-pipelines.high-definition": "17.5.0"
+    },
+    "author": {
+        "name": "Simeon Radivoev",
+        "email": "simeonradivoev@gmail.com",
+        "url": "https://simeonradivoev.com"
+    },
+    "publishConfig": { "registry": "https://npm.pkg.github.com/@simeonradivoev" }
 }
